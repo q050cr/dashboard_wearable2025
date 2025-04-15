@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 data/*.csv
 .env
+
+# allow committing this specific file ONCE
+!data/bp_data.csv

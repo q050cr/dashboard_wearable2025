@@ -4,6 +4,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import platform
+import shutil
 from datetime import datetime
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
@@ -24,30 +26,79 @@ st.set_page_config(
 if "reset_form" not in st.session_state:
     st.session_state["reset_form"] = False
 
-DATA_PATH = "./data/bp_data.csv"
+# Detect Streamlit Cloud
+IS_CLOUD = "streamlit" in platform.platform().lower()
+
+# Define paths
+# On Streamlit Cloud, the app reads & writes to /mount/tmp/bp_data.csv
+CLOUD_PATH = "/mount/tmp/bp_data.csv"
+REPO_PATH = "./data/bp_data.csv"
+DATA_PATH = CLOUD_PATH if IS_CLOUD else REPO_PATH
+
+# One-time cloud fallback: only if no saved file exists yet
+if IS_CLOUD and not os.path.exists(CLOUD_PATH):
+    if os.path.exists(REPO_PATH):
+        shutil.copy(REPO_PATH, CLOUD_PATH)
+    else:
+        pd.DataFrame(columns=[
+            "timestamp", "subject_id",
+            "ref_sys", "ref_dia",
+            "livemetric_sys", "livemetric_dia",
+            "watch_sys", "watch_dia"
+        ]).to_csv(CLOUD_PATH, index=False)
+
+# --- FNS ---
+
 
 def load_data():
     if os.path.exists(DATA_PATH):
-        return pd.read_csv(DATA_PATH)
+        df = pd.read_csv(DATA_PATH)
+        num_cols = ["ref_sys", "ref_dia", "livemetric_sys",
+                    "livemetric_dia", "watch_sys", "watch_dia"]
+        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors='coerce')
+        return df
     return pd.DataFrame(columns=[
-        "timestamp", "subject_id", 
-        "ref_sys", "ref_dia", 
+        "timestamp", "subject_id",
+        "ref_sys", "ref_dia",
         "livemetric_sys", "livemetric_dia",
         "watch_sys", "watch_dia"
     ])
 
+
 def save_data(df):
     df.to_csv(DATA_PATH, index=False)
 
+
 def calculate_stats(df):
-    df = df.dropna()
-    stats = {
-        "MAE (LiveMetric SYS)": np.mean(np.abs(df["livemetric_sys"] - df["ref_sys"])),
-        "MAE (Watch SYS)": np.mean(np.abs(df["watch_sys"] - df["ref_sys"])),
-        "MAE (LiveMetric DIA)": np.mean(np.abs(df["livemetric_dia"] - df["ref_dia"])),
-        "MAE (Watch DIA)": np.mean(np.abs(df["watch_dia"] - df["ref_dia"])),
-    }
+    # Convert relevant columns to numeric, coercing errors to NaN
+    cols = ["ref_sys", "ref_dia", "livemetric_sys",
+            "livemetric_dia", "watch_sys", "watch_dia"]
+    df[cols] = df[cols].apply(pd.to_numeric, errors='coerce')
+
+    stats = {}
+
+    for device, sys_col, dia_col in [
+        ("LiveMetric", "livemetric_sys", "livemetric_dia"),
+        ("Watch", "watch_sys", "watch_dia")
+    ]:
+        # Systolic
+        sys_valid = df[["ref_sys", sys_col]].dropna()
+        if not sys_valid.empty:
+            stats[f"MAE ({device} SYS)"] = np.mean(
+                np.abs(sys_valid[sys_col] - sys_valid["ref_sys"]))
+        else:
+            stats[f"MAE ({device} SYS)"] = np.nan
+
+        # Diastolic
+        dia_valid = df[["ref_dia", dia_col]].dropna()
+        if not dia_valid.empty:
+            stats[f"MAE ({device} DIA)"] = np.mean(
+                np.abs(dia_valid[dia_col] - dia_valid["ref_dia"]))
+        else:
+            stats[f"MAE ({device} DIA)"] = np.nan
+
     return stats
+
 
 # ---------- Plot Functions ----------
 
@@ -256,3 +307,11 @@ with st.expander("🗃️ Raw Data Table"):
         "watch_dia": "Watch DIA"
     }
     st.dataframe(df.rename(columns=COLUMN_RENAME), use_container_width=True)
+
+
+st.download_button(
+    label="📥 Download data as CSV",
+    data=df.to_csv(index=False).encode('utf-8'),
+    file_name="bp_data_export.csv",
+    mime="text/csv"
+)
