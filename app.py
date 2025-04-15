@@ -54,7 +54,15 @@ def calculate_stats(df):
 
 def plot_scatter_plotly(df, ref_col, device_col, label):
     df_clean = df[[ref_col, device_col]].dropna()
-    max_val = int(df_clean.max().max() * 1.1)
+    if df_clean.empty or df_clean[[ref_col, device_col]].dropna().empty:
+        return go.Figure().update_layout(
+            title="No valid data available",
+            template="plotly_white",
+            height=300
+        )
+
+    max_val = int(df_clean[[ref_col, device_col]].select_dtypes(
+        include=[np.number]).max().max() * 1.1)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -176,22 +184,50 @@ for device_name, (sys_col, dia_col) in devices.items():
     with st.expander(f"📈 {device_name}"):
         st.markdown("**Systolic**")
         col1, col2 = st.columns(2)
+
         with col1:
-            st.plotly_chart(plot_scatter_plotly(
-                df, "ref_sys", sys_col, f"{device_name} SYS"), use_container_width=True)
+            if df[[sys_col, "ref_sys"]].dropna().empty:
+                st.info("No systolic data available for scatter plot.")
+            else:
+                st.plotly_chart(
+                    plot_scatter_plotly(df, "ref_sys", sys_col, f"{device_name} SYS"),
+                    use_container_width=True,
+                    key=f"{device_name}_scatter_sys"
+                )
+
         with col2:
-            st.plotly_chart(bland_altman_plotly(
-                df, "ref_sys", sys_col, f"{device_name} SYS"), use_container_width=True)
+            if df[[sys_col, "ref_sys"]].dropna().empty:
+                st.info("No systolic data available for Bland-Altman plot.")
+            else:
+                st.plotly_chart(
+                    bland_altman_plotly(df, "ref_sys", sys_col, f"{device_name} SYS"),
+                    use_container_width=True,
+                    key=f"{device_name}_ba_sys"
+                )
+        st.markdown("---")
 
         st.markdown("**Diastolic**")
         col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(plot_scatter_plotly(
-                df, "ref_dia", dia_col, f"{device_name} DIA"), use_container_width=True)
-        with col2:
-            st.plotly_chart(bland_altman_plotly(
-                df, "ref_dia", dia_col, f"{device_name} DIA"), use_container_width=True)
+            if df[[dia_col, "ref_dia"]].dropna().empty:
+                st.info("No diastolic data available for scatter plot.")
+            else:
+                st.plotly_chart(
+                    plot_scatter_plotly(df, "ref_dia", dia_col, f"{device_name} DIA"),
+                    use_container_width=True,
+                    key=f"{device_name}_scatter_dia"
+                )
 
+        with col2:
+            if df[[dia_col, "ref_dia"]].dropna().empty:
+                st.info("No diastolic data available for Bland-Altman plot.")
+            else:
+                st.plotly_chart(
+                    bland_altman_plotly(df, "ref_dia", dia_col, f"{device_name} DIA"),
+                    use_container_width=True,
+                    key=f"{device_name}_ba_dia"
+                )
+        st.markdown("---")
 
 # --- Stats & Raw Data ---
 with st.expander("📊 Measurement Statistics", expanded=True):
