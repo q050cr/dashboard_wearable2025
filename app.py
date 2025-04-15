@@ -135,8 +135,9 @@ def plot_scatter_plotly(df, ref_col, device_col, label):
         xaxis_title="Reference",
         yaxis_title=label,
         margin=dict(l=40, r=40, t=30, b=40),
-        height=400,
+        height=200,
         template="plotly_white",
+        font=dict(size=14),  # Increased font size
         showlegend=False
     )
     return fig
@@ -168,8 +169,9 @@ def bland_altman_plotly(df, ref_col, device_col, label):
         xaxis_title='Mean of Device and Reference',
         yaxis_title='Difference (Device - Reference)',
         margin=dict(l=40, r=40, t=30, b=40),
-        height=400,
+        height=200,
         template='plotly_white',
+        font=dict(size=14),  # Increased font size
         showlegend=False
     )
     return fig
@@ -232,7 +234,7 @@ devices = {
 }
 
 for device_name, (sys_col, dia_col) in devices.items():
-    with st.expander(f"📈 {device_name}"):
+    with st.expander(f"{device_name}"):
         st.markdown("**Systolic**")
         col1, col2 = st.columns(2)
 
@@ -281,7 +283,7 @@ for device_name, (sys_col, dia_col) in devices.items():
         st.markdown("---")
 
 # --- Stats & Raw Data ---
-with st.expander("📊 Measurement Statistics", expanded=True):
+with st.expander("📈 Measurement Statistics", expanded=True):
     stats = calculate_stats(df)
 
     st.markdown("#### Mean Absolute Error (MAE) [mmHg]")
