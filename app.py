@@ -42,7 +42,7 @@ if IS_CLOUD and not os.path.exists(CLOUD_PATH):
         shutil.copy(REPO_PATH, CLOUD_PATH)
     else:
         pd.DataFrame(columns=[
-            "timestamp", "subject_id",
+            "timestamp", "subject_id", "age", "gender", "post_exercise",
             "ref_sys", "ref_dia",
             "livemetric_sys", "livemetric_dia",
             "watch_sys", "watch_dia"
@@ -59,7 +59,7 @@ def load_data():
         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors='coerce')
         return df
     return pd.DataFrame(columns=[
-        "timestamp", "subject_id",
+        "timestamp", "subject_id", "age", "gender", "post_exercise",
         "ref_sys", "ref_dia",
         "livemetric_sys", "livemetric_dia",
         "watch_sys", "watch_dia"
@@ -251,8 +251,26 @@ def bland_altman_multiple_devices(df, ref_col, device_cols, label="Bland-Altman"
     return fig
 
 # --- UI Starts ---
-st.title("🩺 Wearable Blood Pressure Monitoring")
 
+
+# TITLE
+st.markdown(
+    "<h1 style='text-align: center;'>🩺</h1>",
+    unsafe_allow_html=True
+)
+st.title("Wearable Blood Pressure Monitoring")
+
+# --- img centered ---
+col1, col2, col3 = st.columns([1.5, 2, 1])
+
+with col2:
+    st.image(
+        "img/wearable_bp.png",
+        caption="",
+        width=300
+    )
+
+# --- Sidebar ---
 df = load_data()
 
 st.sidebar.header("Add New Measurement")
@@ -269,19 +287,56 @@ if st.session_state["reset_form"]:
     st.rerun()  # rerun to apply reset
 
 with st.sidebar.form("new_measurement"):
-    subject_id = st.text_input(label="Subject ID", value=None, key="subject_id_input")
-    ref_sys = st.number_input(label="Reference SYS", min_value=0, max_value=300, value=None, placeholder="Type a number...", key="ref_sys_input")
-    ref_dia = st.number_input(label="Reference DIA", min_value=0, max_value=300, value=None, placeholder="Type a number...", key="ref_dia_input")
-    lm_sys = st.number_input(label="LiveMetric SYS", min_value=0, max_value=300, value=None, placeholder="Type a number...", key="lm_sys_input")
-    lm_dia = st.number_input(label="LiveMetric DIA", min_value=0, max_value=300, value=None, placeholder="Type a number...", key="lm_dia_input")
-    watch_sys = st.number_input(label="Watch SYS", min_value=0, max_value=300, value=None, placeholder="Type a number...", key="watch_sys_input")
-    watch_dia = st.number_input(label="Watch DIA", min_value=0, max_value=300, value=None, placeholder="Type a number...", key="watch_dia_input")
+    subject_id = st.text_input(label="Subject ID", value=None, placeholder="e.g. DGK_DO_1130Uhr", key="subject_id_input")
+    age = st.number_input(label="Age (years)", min_value=18, max_value=120,
+                          value=None, placeholder="e.g. 45", key="age_input")
+    col_gender, col_exercise = st.columns(2)
+    with col_gender:
+        gender = st.selectbox(
+            "Gender", options=["", "female", "male"], index=0, key="gender_input")
+    with col_exercise:
+        post_exercise = st.selectbox("Post Exercise?", options=[
+                                    "", "yes", "no"], index=0, key="post_exercise_input")
+
+    # measurments
+    # Reference SYS/DIA
+    col1, col2 = st.columns(2)
+    with col1:
+        ref_sys = st.number_input(label="Reference SYS", min_value=0, max_value=300,
+                                value=None, placeholder="e.g. 120", key="ref_sys_input")
+    with col2:
+        ref_dia = st.number_input(label="Reference DIA", min_value=0, max_value=300,
+                                value=None, placeholder="e.g. 80", key="ref_dia_input")
+
+    # LiveMetric SYS/DIA
+    col3, col4 = st.columns(2)
+    with col3:
+        lm_sys = st.number_input(label="LiveMetric SYS", min_value=0, max_value=300,
+                                value=None, placeholder="", key="lm_sys_input")
+    with col4:
+        lm_dia = st.number_input(label="LiveMetric DIA", min_value=0, max_value=300,
+                                value=None, placeholder="", key="lm_dia_input")
+
+    # Watch SYS/DIA
+    col5, col6 = st.columns(2)
+    with col5:
+        watch_sys = st.number_input(label="Watch SYS", min_value=0, max_value=300,
+                                    value=None, placeholder="", key="watch_sys_input")
+    with col6:
+        watch_dia = st.number_input(label="Watch DIA", min_value=0, max_value=300,
+                                    value=None, placeholder="", key="watch_dia_input")
+
+
+
     submitted = st.form_submit_button(label="Submit")
 
     if submitted:
         new_row = {
             "timestamp": datetime.now().isoformat(),
             "subject_id": subject_id,
+            "age": age,
+            "gender": gender,
+            "post_exercise": post_exercise,
             "ref_sys": ref_sys,
             "ref_dia": ref_dia,
             "livemetric_sys": lm_sys,
@@ -296,6 +351,21 @@ with st.sidebar.form("new_measurement"):
         # ✅ Trigger reset
         st.session_state["reset_form"] = True
         st.rerun()
+
+
+# --- Stats & Raw Data ---
+with st.expander("📈 Measurement Statistics", expanded=True):
+    stats = calculate_stats(df)
+
+    st.markdown("#### Mean Absolute Error (MAE) [mmHg]")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("LiveMetric SYS", f"{stats['MAE (LiveMetric SYS)']:.2f}")
+        st.metric("LiveMetric DIA", f"{stats['MAE (LiveMetric DIA)']:.2f}")
+    with col2:
+        st.metric("Watch SYS", f"{stats['MAE (Watch SYS)']:.2f}")
+        st.metric("Watch DIA", f"{stats['MAE (Watch DIA)']:.2f}")
 
 
 # --- Data Visualization ---
@@ -355,43 +425,11 @@ for device_name, (sys_col, dia_col) in devices.items():
                 )
         st.markdown("---")
 
-# --- Stats & Raw Data ---
-with st.expander("📈 Measurement Statistics", expanded=True):
-    stats = calculate_stats(df)
-
-    st.markdown("#### Mean Absolute Error (MAE) [mmHg]")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("LiveMetric SYS", f"{stats['MAE (LiveMetric SYS)']:.2f}")
-        st.metric("LiveMetric DIA", f"{stats['MAE (LiveMetric DIA)']:.2f}")
-    with col2:
-        st.metric("Watch SYS", f"{stats['MAE (Watch SYS)']:.2f}")
-        st.metric("Watch DIA", f"{stats['MAE (Watch DIA)']:.2f}")
+# --- insert image ---
+st.image("img/blood_pressure_derive.png", caption="From Signal to Pressure", use_container_width=True)
 
 
-with st.expander("🗃️ Raw Data Table"):
-    COLUMN_RENAME = {
-        "timestamp": "Timestamp",
-        "subject_id": "Subject ID",
-        "ref_sys": "Reference SYS",
-        "ref_dia": "Reference DIA",
-        "livemetric_sys": "LiveMetric SYS",
-        "livemetric_dia": "LiveMetric DIA",
-        "watch_sys": "Watch SYS",
-        "watch_dia": "Watch DIA"
-    }
-    st.dataframe(df.rename(columns=COLUMN_RENAME), use_container_width=True)
-
-
-st.download_button(
-    label="📥 Download data as CSV",
-    data=df.to_csv(index=False).encode('utf-8'),
-    file_name="bp_data_export.csv",
-    mime="text/csv"
-)
-
-
+# --- Combined Plots ---
 st.subheader("Combined Bland-Altman Plots")
 
 # Create 2 columns: SYS on left, DIA on right
@@ -418,3 +456,29 @@ with col2:
         label="Diastolic (DIA)"
     )
     st.plotly_chart(diastolic_ba, use_container_width=True)
+
+
+# --- Raw Data Table ---
+with st.expander("🗃️ Raw Data Table"):
+    COLUMN_RENAME = {
+        "timestamp": "Timestamp",
+        "subject_id": "Subject ID",
+        "age": "Age",
+        "gender": "Gender",
+        "post_exercise": "Post Exercise",
+        "ref_sys": "Reference SYS",
+        "ref_dia": "Reference DIA",
+        "livemetric_sys": "LiveMetric SYS",
+        "livemetric_dia": "LiveMetric DIA",
+        "watch_sys": "Watch SYS",
+        "watch_dia": "Watch DIA"
+    }
+    st.dataframe(df.rename(columns=COLUMN_RENAME), use_container_width=True)
+
+
+st.download_button(
+    label="📥 Download data as CSV",
+    data=df.to_csv(index=False).encode('utf-8'),
+    file_name="bp_data_export.csv",
+    mime="text/csv"
+)
