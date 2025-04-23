@@ -1,4 +1,5 @@
 # app.py
+import plotly.graph_objects as go
 from weakref import ref
 import streamlit as st
 import pandas as pd
@@ -132,10 +133,11 @@ def plot_scatter_plotly(df, ref_col, device_col, label):
         name='Perfect Agreement'
     ))
     fig.update_layout(
+        title=f"Scatter Plot: {label}",
         xaxis_title="Reference",
         yaxis_title=label,
         margin=dict(l=40, r=40, t=30, b=40),
-        height=200,
+        height=400,
         template="plotly_white",
         font=dict(size=14),  # Increased font size
         showlegend=False
@@ -143,39 +145,110 @@ def plot_scatter_plotly(df, ref_col, device_col, label):
     return fig
 
 
-def bland_altman_plotly(df, ref_col, device_col, label):
+def bland_altman_plotly(df, ref_col, device_col, label="Bland-Altman"):
     df_clean = df[[ref_col, device_col]].dropna()
     mean = (df_clean[ref_col] + df_clean[device_col]) / 2
     diff = df_clean[device_col] - df_clean[ref_col]
+
     mean_diff = diff.mean()
     std_diff = diff.std()
 
+    upper = mean_diff + 1.96 * std_diff
+    lower = mean_diff - 1.96 * std_diff
+
     fig = go.Figure()
+
+    # Data points
     fig.add_trace(go.Scatter(
         x=mean,
         y=diff,
         mode='markers',
         marker=dict(color='mediumseagreen', size=8,
                     line=dict(width=1, color='black')),
-        name='Data'
+        name='Differences'
     ))
-    fig.add_hline(y=mean_diff, line=dict(color='red', dash='dash'))
-    fig.add_hline(y=mean_diff + 1.96 * std_diff,
-                  line=dict(color='gray', dash='dot'))
-    fig.add_hline(y=mean_diff - 1.96 * std_diff,
-                  line=dict(color='gray', dash='dot'))
 
-    fig.update_layout(
-        xaxis_title='Mean of Device and Reference',
-        yaxis_title='Difference (Device - Reference)',
-        margin=dict(l=40, r=40, t=30, b=40),
-        height=200,
-        template='plotly_white',
-        font=dict(size=14),  # Increased font size
-        showlegend=False
+    # Shaded area for limits of agreement
+    fig.add_shape(
+        type="rect",
+        x0=mean.min(), x1=mean.max(),
+        y0=lower, y1=upper,
+        fillcolor="lightgray",
+        opacity=0.2,
+        line_width=0,
+        layer="below"
     )
+
+    # --- Horizontal lines ----
+    # perfect agreement:
+    fig.add_hline(y=0, line=dict(color='red', dash='dash'),
+                  annotation_text="0 (Perfect)", annotation_position="bottom left")
+    # mean diff:
+    fig.add_hline(y=mean_diff, line=dict(color='gray', dash='dot'),
+                  annotation_text=f"Mean: {mean_diff:.2f}", annotation_position="bottom left")
+    # mean ± 1.96 SD:
+    fig.add_hline(y=upper, line=dict(color='gray', dash='dot'),
+                  annotation_text=f"+1.96 SD: {upper:.2f}", annotation_position="bottom left")
+    # mean - 1.96 SD:
+    fig.add_hline(y=lower, line=dict(color='gray', dash='dot'),
+                  annotation_text=f"-1.96 SD: {lower:.2f}", annotation_position="bottom left")
+
+    # Final layout tweaks
+    fig.update_layout(
+        title=f"Bland-Altman Plot: {label}",
+        xaxis_title='Means',
+        yaxis_title='Difference',
+        height=400,
+        template='plotly_white',
+        font=dict(size=14),
+        showlegend=True
+    )
+
     return fig
 
+
+def bland_altman_multiple_devices(df, ref_col, device_cols, label="Bland-Altman"):
+    import plotly.graph_objects as go
+    fig = go.Figure()
+
+    for device_col in device_cols:
+        df_clean = df[[ref_col, device_col]].dropna()
+        mean = (df_clean[ref_col] + df_clean[device_col]) / 2
+        diff = df_clean[device_col] - df_clean[ref_col]
+
+        mean_diff = diff.mean()
+        std_diff = diff.std()
+        upper = mean_diff + 1.96 * std_diff
+        lower = mean_diff - 1.96 * std_diff
+
+        # Data points per device
+        fig.add_trace(go.Scatter(
+            x=mean,
+            y=diff,
+            mode='markers',
+            name=f"{device_col}",
+            marker=dict(size=8, line=dict(width=1, color='black'))
+        ))
+
+        # Optional: Add mean + SD lines per device
+        # But consider doing this only for 1 device to avoid clutter
+        # Or toggle based on which is being highlighted
+
+    # Add the perfect agreement line once
+    fig.add_hline(y=0, line=dict(color='red', dash='dash'),
+                  annotation_text="0 (Perfect)", annotation_position="bottom left")
+
+    fig.update_layout(
+        title=f"{label}",
+        xaxis_title='Means',
+        yaxis_title='Difference',
+        height=400,
+        template='plotly_white',
+        font=dict(size=14),
+        showlegend=True
+    )
+
+    return fig
 
 # --- UI Starts ---
 st.title("🩺 Wearable Blood Pressure Monitoring")
@@ -317,3 +390,31 @@ st.download_button(
     file_name="bp_data_export.csv",
     mime="text/csv"
 )
+
+
+st.subheader("Combined Bland-Altman Plots")
+
+# Create 2 columns: SYS on left, DIA on right
+col1, col2 = st.columns(2)
+
+# --- Systolic Combined BA ---
+with col1:
+    st.markdown("### Systolic")
+    systolic_ba = bland_altman_multiple_devices(
+        df=df,
+        ref_col="ref_sys",
+        device_cols=[sys for _, (sys, _) in devices.items()],
+        label="Systolic (SYS)"
+    )
+    st.plotly_chart(systolic_ba, use_container_width=True)
+
+# --- Diastolic Combined BA ---
+with col2:
+    st.markdown("### Diastolic")
+    diastolic_ba = bland_altman_multiple_devices(
+        df=df,
+        ref_col="ref_dia",
+        device_cols=[dia for _, (_, dia) in devices.items()],
+        label="Diastolic (DIA)"
+    )
+    st.plotly_chart(diastolic_ba, use_container_width=True)
